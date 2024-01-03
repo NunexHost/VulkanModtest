@@ -2,11 +2,9 @@ package net.vulkanmod.vulkan.texture;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import net.vulkanmod.vulkan.*;
-import net.vulkanmod.vulkan.framebuffer.SwapChain;
 import net.vulkanmod.vulkan.memory.MemoryManager;
 import net.vulkanmod.vulkan.memory.StagingBuffer;
 import net.vulkanmod.vulkan.queue.CommandPool;
-import net.vulkanmod.vulkan.util.VUtil;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.*;
@@ -15,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
 import java.util.Arrays;
 
+import static net.vulkanmod.vulkan.queue.Queue.GraphicsQueue;
 import static net.vulkanmod.vulkan.texture.SamplerManager.*;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
@@ -73,7 +72,7 @@ public class VulkanImage {
         image.createImage(builder.mipLevels, builder.width, builder.height, builder.format, builder.usage);
         image.mainImageView = createImageView(image.id, builder.format, image.aspect, builder.mipLevels);
 
-        image.sampler = SamplerManager.getTextureSampler(builder.mipLevels, builder.samplerFlags);
+        image.sampler = checkUsage(builder.usage, VK_IMAGE_USAGE_SAMPLED_BIT) ? SamplerManager.getTextureSampler(builder.mipLevels, builder.samplerFlags) : VK_NULL_HANDLE;
 
         if(builder.levelViews) {
             image.levelImageViews = new long[builder.mipLevels];
@@ -86,15 +85,18 @@ public class VulkanImage {
         return image;
     }
 
+    private static boolean checkUsage(int usage, int requestedUsage) {
+        return (usage & requestedUsage)!=0;
+    }
+
     public static VulkanImage createDepthImage(int format, int width, int height, int usage, boolean blur, boolean clamp) {
-        VulkanImage image = VulkanImage.builder(width, height)
+
+        return VulkanImage.builder(width, height)
                 .setFormat(format)
                 .setUsage(usage)
                 .setLinearFiltering(blur)
                 .setClamp(clamp)
                 .createVulkanImage();
-
-        return image;
     }
 
     public static VulkanImage createWhiteTexture() {
@@ -189,7 +191,7 @@ public class VulkanImage {
     public void uploadSubTextureAsync(int mipLevel, int width, int height, int xOffset, int yOffset, int unpackSkipRows, int unpackSkipPixels, int unpackRowLength, ByteBuffer buffer) {
         long imageSize = buffer.limit();
 
-        CommandPool.CommandBuffer commandBuffer = DeviceManager.getGraphicsQueue().getCommandBuffer();
+        CommandPool.CommandBuffer commandBuffer = GraphicsQueue.getCommandBuffer();
         try(MemoryStack stack = stackPush()) {
             transferDstLayout(stack, commandBuffer.getHandle());
         }
@@ -202,7 +204,7 @@ public class VulkanImage {
         ImageUtil.copyBufferToImageCmd(commandBuffer.getHandle(), stagingBuffer.getId(), id, mipLevel, width, height, xOffset, yOffset,
                 (int) (stagingBuffer.getOffset() + (unpackRowLength * unpackSkipRows + unpackSkipPixels) * this.formatSize), unpackRowLength, height);
 
-        long fence = DeviceManager.getGraphicsQueue().endIfNeeded(commandBuffer);
+        long fence = GraphicsQueue.endIfNeeded(commandBuffer);
         if (fence != VK_NULL_HANDLE)
 //            Synchronization.INSTANCE.addFence(fence);
             Synchronization.INSTANCE.addCommandBuffer(commandBuffer);
@@ -216,11 +218,11 @@ public class VulkanImage {
         if (this.currentLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
             return;
 
-        CommandPool.CommandBuffer commandBuffer = DeviceManager.getGraphicsQueue().getCommandBuffer();
+        CommandPool.CommandBuffer commandBuffer = GraphicsQueue.getCommandBuffer();
         try(MemoryStack stack = MemoryStack.stackPush()) {
             readOnlyLayout(stack, commandBuffer.getHandle());
         }
-        DeviceManager.getGraphicsQueue().submitCommands(commandBuffer);
+        GraphicsQueue.submitCommands(commandBuffer);
         Synchronization.INSTANCE.addCommandBuffer(commandBuffer);
     }
 

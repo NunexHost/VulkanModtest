@@ -129,7 +129,7 @@ public class Options {
                         },
                         (value) -> {
                             minecraftOptions.biomeBlendRadius().set(value);
-                            Minecraft.getInstance().levelRenderer.allChanged();
+                            Renderer.reload=true;
                         },
                         () -> minecraftOptions.biomeBlendRadius().get()),
                 new CyclingOption<>("Chunk Builder Mode",
@@ -218,6 +218,23 @@ public class Options {
                         .setTooltip(Component.nullToEmpty("""
                         Reduces CPU overhead but increases GPU overhead.
                         Enabling it might help in CPU limited systems.""")),
+                new SwitchOption("Low VRAM Mode",
+                        value -> {
+                            config.perRenderTypeAreaBuffers = value;
+                            Renderer.reload=true;
+                        },
+                        () -> config.perRenderTypeAreaBuffers).setTooltip(Component.nullToEmpty("""
+                        (WARNING: EXPERIMENTAL)
+                        
+                        Reduces VRAM usage by up to 40%
+                        May Increase/Decrease FPS: How this effects FPS Depends on GPU architecture
+                        (Can boost performance on Old Nvidia cards)""")),
+                new SwitchOption("RenderFog",
+                        value -> {
+                            config.renderFog = value;
+                            Renderer.recomp=true;
+                        },
+                        () -> config.renderFog),
                 new CyclingOption<>("Device selector",
                         IntStream.range(-1, DeviceManager.suitableDevices.size()).boxed().toArray(Integer[]::new),
                         value -> {
